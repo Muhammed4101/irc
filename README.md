@@ -2,12 +2,12 @@
 
 # ft_irc
 
-A small IRC server written from scratch in C++98. You can connect to it with a real IRC client such as **HexChat**, or with `nc`, pick a nickname, join channels, chat with other users, and manage channels as an operator.
+A small IRC server written from scratch in C++98. You can connect to it with a real IRC client such as **HexChat**, pick a nickname, join channels, chat with other users, and manage channels as an operator.
 
 ```
- HexChat / nc ──┐
- HexChat / nc ──┼──►  ./ircserv 6667 secret  ──►  #42, #general, private messages...
- HexChat / nc ──┘
+ HexChat ──┐
+ HexChat ──┼──►  ./ircserv 6667 secret  ──►  #42, #general, private messages...
+ HexChat ──┘
 ```
 
 ---
@@ -41,17 +41,12 @@ The goal of this project is to write that server. It must:
 | `NICK` | `NICK alice` | Sets or changes your nickname. |
 | `USER` | `USER alice 0 * :Alice Liddell` | Sets your username and real name. |
 | `PRIVMSG` | `PRIVMSG #42 :hello` | Sends a message to a user or a channel. |
-| `NOTICE` | `NOTICE bob :hi` | Like `PRIVMSG`, but never triggers an error reply. |
 | `JOIN` | `JOIN #42 [key]` | Joins a channel, or creates it if it does not exist. |
-| `PART` | `PART #42 :bye` | Leaves a channel. |
 | `TOPIC` | `TOPIC #42 :new topic` | Shows or changes the channel topic. |
 | `KICK` | `KICK #42 bob :reason` | Removes a user from a channel (operators only). |
 | `INVITE` | `INVITE bob #42` | Invites a user to a channel. |
 | `MODE` | `MODE #42 +ik secret` | Shows or changes channel modes. |
-| `NAMES` | `NAMES #42` | Lists the users in a channel. |
-| `WHO` | `WHO #42` | Shows details about the users in a channel. |
 | `PING` / `PONG` | `PING token` | Checks that the connection is alive. |
-| `QUIT` | `QUIT :see you` | Disconnects from the server. |
 | `CAP` | `CAP LS` | Accepted and ignored, so clients like HexChat can connect. |
 
 ### Channel modes
@@ -125,41 +120,15 @@ HexChat is a free IRC client with a window interface (install it with `sudo apt 
 /join #42
 hello everyone
 /msg bob hi
-/quit
 ```
 
 HexChat sends `PASS`, `NICK` and `USER` for you when it connects.
-
-### Connect with nc
-
-`nc` sends exactly what you type, so you write the IRC commands yourself. The `-C` option makes the Enter key send `\r\n`, the line ending IRC uses. Type commands **without** a leading `/` (that slash is only a shortcut inside clients like HexChat).
-
-```sh
-nc -C localhost 6667
-PASS secret
-NICK alice
-USER alice 0 * :Alice Liddell
-JOIN #42
-```
-
-### Test partial data
-
-The subject asks the server to handle a command that arrives in pieces. In `nc`, press `Ctrl+D` to send what you have typed so far without a line ending:
-
-```
-nc -C localhost 6667
-PA       then Ctrl+D
-SS sec   then Ctrl+D
-ret      then Enter
-```
-
-The server waits for the full line and reads it as `PASS secret`.
 
 ---
 
 ## Usage example
 
-Two users talking on the server. Lines starting with `>` are typed by the user, lines starting with `<` come from the server. These lines come from a real run. Some lines are shortened or left out.
+Two users talking on the server. This is what HexChat and the server send to each other: lines starting with `>` are sent by the client, lines starting with `<` come from the server. These lines come from a real run. Some lines are shortened or left out.
 
 **Alice** connects, registers, and creates a private channel:
 
@@ -239,7 +208,7 @@ Many server replies carry a three-digit code, called a **numeric**, right after 
 - **A buffer per client.** Each client has an input buffer and an output buffer (`std::vector<char>`). Incoming bytes are stored until a full line (ending in `\n`) is there, which is how split commands are rebuilt. Replies are queued in the output buffer and sent when `epoll` reports the socket is writable (`EPOLLOUT` is only watched while there is something to send).
 - **A command table.** Commands are looked up in a `std::map` from the command name to its handler function. Each entry also says whether the user must be registered first.
 - **Password first.** Any command other than `PASS` (or `CAP`) before the correct password gets `451` and the connection is closed. A wrong password gets `464` and the connection is closed.
-- **Clean disconnects.** When the server ends a connection itself (for example after a wrong password or a `QUIT`), it first sends an `ERROR` line, waits about 100 ms so the client can read it, then closes the socket.
+- **Clean disconnects.** When the server ends a connection itself (for example after a wrong password), it first sends an `ERROR` line, waits about 100 ms so the client can read it, then closes the socket.
 - **Protection against bad clients.** Lines longer than 510 bytes are cut, a client can join at most 20 channels, and a client that stops reading is disconnected once 8 MB of output is waiting for it.
 - **IRC name rules.** Nicknames are case-insensitive and follow RFC 1459 (`{}|` are the lower-case forms of `[]\`). A nickname has at most 9 characters and starts with a letter. Channel names start with `#` or `&` and have at most 200 characters.
 - **Signals.** `Ctrl+C` and `Ctrl+\` stop the main loop, so all sockets are closed and all memory is freed. `SIGPIPE` is ignored, so a client that disconnects while we are writing cannot crash the server.
@@ -253,9 +222,9 @@ Many server replies carry a three-digit code, called a **numeric**, right after 
 | `Client.hpp` / `Client.cpp` | One connected user: buffers, nickname, registration state |
 | `Channel.hpp` / `Channel.cpp` | One channel: members, operators, invites, topic, modes |
 | `Parser.hpp` / `Parser.cpp` | Splits a raw line into prefix, command and parameters (RFC 1459) |
-| `Commands.cpp` | Command table and registration: `PASS`, `NICK`, `USER`, `PING`, `QUIT`... |
-| `MessageCommands.cpp` | `PRIVMSG` and `NOTICE` |
-| `ChannelCommands.cpp` | `JOIN`, `PART`, `TOPIC`, `KICK`, `INVITE`, `NAMES`, `WHO` |
+| `Commands.cpp` | Command table and registration: `PASS`, `CAP`, `NICK`, `USER`, `PING`, `PONG` |
+| `MessageCommands.cpp` | `PRIVMSG` |
+| `ChannelCommands.cpp` | `JOIN`, `TOPIC`, `KICK`, `INVITE` |
 | `ModeCommand.cpp` | `MODE` and the channel modes `i`, `t`, `k`, `o`, `l` |
 | `Utils.hpp` / `Utils.cpp` | Small helpers: IRC lower-case, comma lists, number to text |
 | `docs/` | A detailed guide to every file and function (in Turkish) |

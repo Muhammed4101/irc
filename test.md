@@ -1,6 +1,6 @@
 # ft_irc test listesi
 
-Durum: ✅ otomatik testte geçti · 🔍 elle denemen gerekiyor (irssi, valgrind)
+Durum: ✅ otomatik testte geçti · 🔍 elle denemen gerekiyor (HexChat, valgrind)
 
 Hazırlık: server `./ircserv 6667 123`. Her client için ayrı terminal aç. Kolaylık için `~/.zshrc`'ye ekle:
 
@@ -30,7 +30,7 @@ ircnc() { { echo "PASS $3"; cat; } | nc -C "$1" "$2"; }
 
 | # | Durum | Ne yap | Beklenen |
 |---|---|---|---|
-| 2.1 | ✅ | `PASS 123` → `NICK ali` → `USER ali 0 * :Ali Veli` | `< :ircserv 001 ali :Welcome to the IRC Network ali!ali@host` (002, 003, 004 de gelebilir) |
+| 2.1 | ✅ | `PASS 123` → `NICK ali` → `USER ali 0 * :Ali Veli` | `< :ircserv 001 ali :Welcome to the Internet Relay Network ali!ali@host` (002, 003, 004 de gelebilir) |
 | 2.2 | ✅ | USER önce, NICK sonra | aynı şekilde 001 gelir, sıra fark etmez |
 | 2.3 | ✅ | `> NICK` | `< 431 * :No nickname given` |
 | 2.4 | ✅ | `> NICK 1abc` veya `> NICK a#b` | `< 432 * 1abc :Erroneus nickname` (RFC'deki yazımı bu) |
@@ -41,7 +41,7 @@ ircnc() { { echo "PASS $3"; cat; } | nc -C "$1" "$2"; }
 | 2.9 | ✅ | kayıttan sonra `NICK veli` | `< :ali!ali@host NICK :veli`, aynı kanaldakiler de görür |
 | 2.10 | ✅ | kayıt bitmeden `JOIN #a` | `< 451 * :You have not registered` |
 
-## 3. Özel mesaj (PRIVMSG / NOTICE)
+## 3. Özel mesaj (PRIVMSG)
 
 İki client: `ali` ve `veli`, ikisi de kayıtlı.
 
@@ -50,11 +50,11 @@ ircnc() { { echo "PASS $3"; cat; } | nc -C "$1" "$2"; }
 | 3.1 | ✅ | `> PRIVMSG veli :merhaba nasilsin` | veli'de: `< :ali!ali@host PRIVMSG veli :merhaba nasilsin` |
 | 3.2 | ✅ | `> PRIVMSG yok :selam` | `< 401 ali yok :No such nick/channel` |
 | 3.3 | ✅ | `> PRIVMSG veli` | `< 412 ali :No text to send` |
-| 3.4 | ✅ | `> PRIVMSG :selam` | `< 411 ali :No recipient given (PRIVMSG)` |
+| 3.4 | ✅ | `> PRIVMSG` | `< 411 ali :No recipient given (PRIVMSG)` (`> PRIVMSG :selam` ise `selam` hedef sayılır, metin yok: `< 412 ali :No text to send`) |
 | 3.5 | ✅ | `> PRIVMSG veli,ayse :selam` | ikisine de gider |
-| 3.6 | ✅ | `> NOTICE veli :bilgi` | veli'ye gider, hata olsa bile cevap dönmez |
+| 3.6 | ✅ | `> NOTICE veli :bilgi` | `< 421 ali NOTICE :Unknown command` (NOTICE PDF'te olmadığı için kaldırıldı) |
 
-## 4. Kanal: JOIN, PART, kanal mesajı
+## 4. Kanal: JOIN, kanal mesajı
 
 | # | Durum | Ne yap | Beklenen |
 |---|---|---|---|
@@ -67,9 +67,8 @@ ircnc() { { echo "PASS $3"; cat; } | nc -C "$1" "$2"; }
 | 4.7 | ✅ | `> JOIN` | `< 461 ali JOIN :Not enough parameters` |
 | 4.8 | ✅ | `> JOIN #a,#b` | iki kanala da katılır |
 | 4.9 | ✅ | zaten içindeyken `JOIN #test` | sessizce yok sayılır |
-| 4.10 | ✅ | veli: `> PART #test :gorusuruz` | herkese `:veli!veli@host PART #test :gorusuruz` |
-| 4.11 | ✅ | kanalda olmayan biri `PART #test` | `< 442 x #test :You're not on that channel` |
-| 4.12 | ✅ | son kişi de PART yapar | kanal silinir; yeniden JOIN eden yeni operator olur |
+| 4.10 | ✅ | veli: `> PART #test :gorusuruz` | `< 421 veli PART :Unknown command` (PART kaldırıldı) |
+| 4.12 | ✅ | kanaldaki herkes bağlantısını kapatır | kanal silinir; yeniden JOIN eden yeni operator olur |
 | 4.13 | ✅ | `JOIN #Test` (#test varken) | aynı kanal sayılır |
 
 ## 5. TOPIC
@@ -118,9 +117,9 @@ Hepsi ali (op) ile, op olmayan veli de kontrol için.
 | 8.3 | ✅ | `> MODE #test -i` | davetsiz JOIN tekrar çalışır |
 | 8.4 | ✅ | `> MODE #test +t` / `-t` | bölüm 5.5 ve 5.6 |
 | 8.5 | ✅ | `> MODE #test +k gizli` | şifresiz `JOIN #test` → `< 475 x #test :Cannot join channel (+k)`; `JOIN #test gizli` → katılır |
-| 8.6 | ✅ | `> MODE #test -k` veya `> MODE #test -k gizli` | herkese `MODE #test -k *`, şifresiz JOIN çalışır (-k'den sonra yazılan key parametre olarak alınır, irssi bunu gönderir) |
+| 8.6 | ✅ | `> MODE #test -k` veya `> MODE #test -k gizli` | herkese `MODE #test -k *`, şifresiz JOIN çalışır (-k'den sonra yazılan key parametre olarak alınır, client'lar bunu gönderir) |
 | 8.7 | ✅ | `> MODE #test +k` (parametresiz) | `< 461 ali MODE :Not enough parameters` |
-| 8.8 | ✅ | `> MODE #test +o veli` | herkese `MODE #test +o veli`, NAMES'te `@veli`; veli artık KICK/TOPIC yapabilir |
+| 8.8 | ✅ | `> MODE #test +o veli` | herkese `MODE #test +o veli`; veli artık KICK/TOPIC yapabilir |
 | 8.9 | ✅ | `> MODE #test -o veli` | veli tekrar normal kullanıcı |
 | 8.10 | ✅ | `> MODE #test +o yok` | `< 401`; kanalda olmayan biri için `< 441` |
 | 8.11 | ✅ | `> MODE #test +l 2` | 3. kişi JOIN → `< 471 x #test :Cannot join channel (+l)` |
@@ -130,13 +129,13 @@ Hepsi ali (op) ile, op olmayan veli de kontrol için.
 | 8.15 | ✅ | `> MODE #test +x` | `< 472 ali x :is unknown mode char to me` |
 | 8.16 | ✅ | veli (op değil): `> MODE #test +i` | `< 482 veli #test :You're not channel operator` |
 | 8.17 | ✅ | `> MODE #yok +i` | `< 403` |
-| 8.18 | ✅ | `> MODE ali +i` (user modu) | sessizce yok sayılır; `MODE ali` → `221 ali +`; `MODE veli +i` → `502` |
+| 8.18 | ✅ | `> MODE ali` veya `> MODE ali +i` (user modu) | `< 403 ali ali :No such channel` (kullanıcı modu yok) |
 
-## 9. QUIT ve bağlantı kopması
+## 9. Bağlantı kopması
 
 | # | Durum | Ne yap | Beklenen |
 |---|---|---|---|
-| 9.1 | ✅ | veli: `> QUIT :bye` | kanaldakilere `:veli!veli@host QUIT :bye`, veli'ye `ERROR`, bağlantı kapanır |
+| 9.1 | ✅ | veli: `> QUIT :bye` | `< 421 veli QUIT :Unknown command` (QUIT kaldırıldı; çıkmak için client'ı kapat) |
 | 9.2 | ✅ | veli'nin nc'sini Ctrl+C ile kapat | server çökmez, kanaldakilere `:veli!veli@host QUIT :Connection closed` gider |
 | 9.3 | ✅ | op olan tek kişi çıkar | kanal opsuz açık kalır (RFC böyle); herkes çıkınca kanal silinir |
 
@@ -155,23 +154,24 @@ Hepsi ali (op) ile, op olmayan veli de kontrol için.
 | 10.9 | ✅ | `kill -9` olmadan Ctrl+C ile server'ı kapat, hemen tekrar başlat | `SO_REUSEADDR` sayesinde `bind failed` olmaz |
 | 10.10 | ✅ | `valgrind --leak-check=full --track-fds=yes ./ircserv 6667 123`, client'lar bağlıyken Ctrl+C | `in use at exit: 0 bytes`, `3 open (3 std)`, `0 errors` |
 
-## 11. Referans client (irssi)
+## 11. Referans client (HexChat)
 
 | # | Durum | Ne yap | Beklenen |
 |---|---|---|---|
-| 11.1 | 🔍 | `irssi` → `/connect localhost 6667 123 ali` | hatasız bağlanır, welcome mesajı görünür |
-| 11.2 | 🔍 | `/join #test`, `/msg veli selam`, `/topic`, `/kick`, `/invite`, `/mode #test +k x` | hepsi yukarıdaki gibi çalışır, irssi penceresinde düzgün görünür |
-| 11.3 | 🔍 | irssi + nc aynı kanalda | iki taraf birbirinin mesajını görür |
-| 11.4 | 🔍 | `/quit` | diğerleri QUIT görür |
+| 11.1 | 🔍 | HexChat → Network List'te `localhost/6667`, şifre `123`, SSL kapalı → Connect | hatasız bağlanır, welcome mesajı görünür |
+| 11.2 | 🔍 | `/join #test`, `/msg veli selam`, `/topic`, `/kick`, `/invite`, `/mode #test +k x` | hepsi yukarıdaki gibi çalışır, HexChat penceresinde düzgün görünür |
+| 11.3 | 🔍 | HexChat + nc aynı kanalda | iki taraf birbirinin mesajını görür |
+| 11.4 | 🔍 | HexChat kanala girer | HexChat kendiliğinden `WHO #test` gönderir, durum penceresinde `421 ... WHO :Unknown command` görünür; bu beklenen davranış |
+| 11.5 | 🔍 | HexChat'i kapat | kanaldakiler `QUIT :Connection closed` görür |
 
-## 12. Ek komutlar (irssi için)
+## 12. Kaldırılan ve kalan ek komutlar
 
 | # | Durum | Ne yap | Beklenen |
 |---|---|---|---|
 | 12.1 | ✅ | `> PING abc` | `< :ircserv PONG ircserv :abc`; parametresiz `409` |
-| 12.2 | ✅ | `> NAMES #test` | `353` + `366` |
-| 12.3 | ✅ | `> WHO #test` | her üye için `352`, sonunda `315` |
-| 12.4 | ✅ | `> MODE #test b` | `368 ... :End of channel ban list` (irssi JOIN sonrası sorar) |
+| 12.2 | ✅ | `> NAMES #test` | `< 421 ali NAMES :Unknown command` (kaldırıldı) |
+| 12.3 | ✅ | `> WHO #test` | `< 421 ali WHO :Unknown command` (kaldırıldı) |
+| 12.4 | ✅ | `> MODE #test b` | `< 461 ali MODE :Not enough parameters` (ban listesi kaldırıldı) |
 | 12.5 | ✅ | kayıttan sonra `> FOO` | `< 421 ali FOO :Unknown command` |
 
 ## 13. Dayanıklılık (kod incelemesinde bulunup düzeltilenler)
@@ -186,5 +186,5 @@ Hepsi ali (op) ile, op olmayan veli de kontrol için.
 | 13.6 | ✅ | `PRIVMSG bob,bob,bob :x` | bob mesajı bir kez alır |
 | 13.7 | ✅ | mesajın ortasında `\r` veya NUL byte | boşluğa çevrilir, başka client'ta sahte satır oluşmaz |
 | 13.8 | ✅ | hiç okumayan client'a 8 MB'tan fazla mesaj birikir | o client atılır, server belleği şişmez |
-| 13.9 | ✅ | çok sayıda satır gönderip hemen bağlantıyı kapat | bütün satırlar işlenir, QUIT sebebi korunur |
+| 13.9 | ✅ | çok sayıda satır gönderip hemen bağlantıyı kapat | bütün satırlar işlenir |
 | 13.10 | ✅ | `ulimit -n 16` ile çalıştırıp 30 bağlantı aç | server %100 CPU'ya kilitlenmez, fd boşalınca yeni bağlantıları kabul eder |

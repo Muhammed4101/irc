@@ -20,20 +20,14 @@ void Server::registerCommands()
     addCommand("USER", &Server::cmdUser, false);
     addCommand("PING", &Server::cmdPing, false);
     addCommand("PONG", &Server::cmdPong, false);
-    addCommand("QUIT", &Server::cmdQuit, false);
     addCommand("PRIVMSG", &Server::cmdPrivmsg, true);
-    addCommand("NOTICE", &Server::cmdNotice, true);
     addCommand("JOIN", &Server::cmdJoin, true);
-    addCommand("PART", &Server::cmdPart, true);
     addCommand("TOPIC", &Server::cmdTopic, true);
     addCommand("KICK", &Server::cmdKick, true);
     addCommand("INVITE", &Server::cmdInvite, true);
-    addCommand("NAMES", &Server::cmdNames, true);
-    addCommand("WHO", &Server::cmdWho, true);
     addCommand("MODE", &Server::cmdMode, true);
 }
 
-// Registration is complete once PASS, NICK and USER are all received.
 void Server::tryRegister(Client &client)
 {
     if (client.isRegistered() || !client.isAuthenticated()
@@ -48,7 +42,6 @@ void Server::tryRegister(Client &client)
     reply(client, "422", ":MOTD File is missing");
 }
 
-// Tells a client that sent the password what is still missing to register.
 void Server::sendRegistrationHelp(Client &client)
 {
     if (!client.hasNick())
@@ -57,7 +50,6 @@ void Server::sendRegistrationHelp(Client &client)
         notice(client, "Set your username: USER <username> 0 * :<real name>");
 }
 
-// PASS <password>  (4.1.1)
 void Server::cmdPass(Client &client, const Message &msg)
 {
     if (client.isAuthenticated())
@@ -75,13 +67,10 @@ void Server::cmdPass(Client &client, const Message &msg)
     }
 }
 
-// Real clients (irssi, hexchat) send CAP LS first; capabilities are not supported.
 void Server::cmdCap(Client &, const Message &)
 {
 }
 
-// RFC 1459, 2.3.1: <letter> { <letter> | <number> | <special> }, at most 9 chars.
-// '_' and '|' (RFC 2812) are accepted too: irssi adds '_' when a nick is taken.
 static bool isValidNick(const std::string &nick)
 {
     if (nick.empty() || nick.size() > 9 || !std::isalpha(static_cast<unsigned char>(nick[0])))
@@ -95,7 +84,6 @@ static bool isValidNick(const std::string &nick)
     return true;
 }
 
-// NICK <nickname>  (4.1.2)
 void Server::cmdNick(Client &client, const Message &msg)
 {
     if (msg.getParams().empty() || msg.getParams()[0].empty())
@@ -116,7 +104,6 @@ void Server::cmdNick(Client &client, const Message &msg)
         sendRegistrationHelp(client);
 }
 
-// USER <username> <hostname> <servername> <realname>  (4.1.3)
 void Server::cmdUser(Client &client, const Message &msg)
 {
     const std::vector<std::string> &params = msg.getParams();
@@ -130,7 +117,6 @@ void Server::cmdUser(Client &client, const Message &msg)
         sendRegistrationHelp(client);
 }
 
-// PING <server>  (4.6.2)
 void Server::cmdPing(Client &client, const Message &msg)
 {
     if (msg.getParams().empty())
@@ -138,16 +124,6 @@ void Server::cmdPing(Client &client, const Message &msg)
     sendMessage(client, ":" SERVER_NAME " PONG " SERVER_NAME " :" + msg.getParams()[0]);
 }
 
-// Answer to our PING; nothing to do since the server never sends PING.
 void Server::cmdPong(Client &, const Message &)
 {
-}
-
-// QUIT [<quit message>]  (4.1.6)
-void Server::cmdQuit(Client &client, const Message &msg)
-{
-    std::string reason = msg.getParams().empty() ? client.getNick() : msg.getParams()[0];
-    log(client, "quit (" + reason + ")");
-    leaveAllChannels(client, reason);
-    closeLink(client, "Quit: " + reason);
 }

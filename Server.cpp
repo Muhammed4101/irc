@@ -9,12 +9,8 @@
 #include <iostream>
 #include <stdexcept>
 
-// ---------------------------------------------------------------- setup
-
 volatile sig_atomic_t Server::_stopRequested = 0;
 
-// Only sets a flag: epoll_wait returns -1 and run() ends normally,
-// so the destructors close every fd and free all memory.
 void Server::requestStop(int)
 {
     _stopRequested = 1;
@@ -35,7 +31,7 @@ Server::Server(int port, const std::string &password)
     }
     catch (...)
     {
-        closeAll();     // the destructor does not run if the constructor throws
+        closeAll();
         throw;
     }
     registerCommands();
@@ -78,8 +74,6 @@ void Server::openListenSocket()
         throw std::runtime_error("listen failed");
 }
 
-// EPOLLOUT is only watched while there is something to send,
-// otherwise epoll_wait would wake up all the time.
 bool Server::watch(int fd, int operation, bool wantWrite)
 {
     struct epoll_event ev;
@@ -87,8 +81,6 @@ bool Server::watch(int fd, int operation, bool wantWrite)
     ev.data.fd = fd;
     return epoll_ctl(_epollFd, operation, fd, &ev) != -1;
 }
-
-// ---------------------------------------------------------------- events
 
 void Server::run()
 {
@@ -99,8 +91,6 @@ void Server::run()
     {
         bool waiting = !_pendingClose.empty() || _acceptPaused;
         int count = epoll_wait(_epollFd, events, MAX_EVENTS, waiting ? CLOSE_DELAY_MS : -1);
-        // -1 also happens after Ctrl+Z / fg on the server (interrupted wait):
-        // that is not an error, so the loop just waits again
         if (count == -1)
             continue;
         ++_loopTurn;
@@ -115,10 +105,8 @@ void Server::run()
                 continue;
             }
             bool hangup = ev & (EPOLLERR | EPOLLHUP);
-            // flush replies before reading a possible EOF, so they are not lost
             if ((ev & EPOLLOUT) && !hangup && findClient(fd))
                 onWritable(*findClient(fd));
-            // read what is left even after a hang-up; recv() then reports the close
             if ((ev & EPOLLIN) && findClient(fd))
                 onReadable(*findClient(fd));
             else if (hangup && findClient(fd))
@@ -131,14 +119,12 @@ void Server::run()
     std::cout << "Server shutting down" << std::endl;
 }
 
-// Called when an fd was freed or after a quiet CLOSE_DELAY_MS.
 void Server::resumeAccept()
 {
     if (watch(_listenFd, EPOLL_CTL_ADD, false))
         _acceptPaused = false;
 }
 
-// A failing client is closed; it must never stop the server.
 void Server::acceptClient()
 {
     struct sockaddr_in addr;
@@ -146,8 +132,6 @@ void Server::acceptClient()
     int fd = accept(_listenFd, (struct sockaddr *)&addr, &addrLen);
     if (fd == -1)
     {
-        // usually out of fds: stop watching the listen socket, otherwise
-        // epoll reports it again at once and the loop spins at 100% CPU
         epoll_ctl(_epollFd, EPOLL_CTL_DEL, _listenFd, NULL);
         _acceptPaused = true;
         return;
@@ -174,7 +158,7 @@ void Server::onReadable(Client &client)
     }
     if (client.isClosing())
     {
-        client.discardInput();  // already rejected or quit, input is ignored
+        client.discardInput();
         return;
     }
 
@@ -193,7 +177,7 @@ void Server::onWritable(Client &client)
     }
     if (client.hasPendingOutput())
         return;
-    watch(fd, EPOLL_CTL_MOD, false);    // nothing left to send
+    watch(fd, EPOLL_CTL_MOD, false);
     if (client.isClosing())
         _pendingClose[fd] = _loopTurn;
 }
@@ -201,14 +185,17 @@ void Server::onWritable(Client &client)
 void Server::processLine(Client &client, const std::string &line)
 {
     if (line.find_first_not_of(' ') == std::string::npos)
-        return;     // RFC 1459: empty messages are silently ignored
+        return;
 
     Message msg;
     if (!msg.parse(line))
     {
         log(client, "invalid message: " + line);
         if (!client.isAuthenticated())
-            reject(client, "451", ":You have not registered", "password required");
+            return reject(client, "451", ":You have not registered", "password required");
+        reply(client, "421", line.substr(0, line.find(' ')) + " :Unknown command");
+        if (line[0] == '/')
+            notice(client, "Commands are sent without '/': for example JOIN #channel");
         return;
     }
     log(client, msg.toString());
@@ -216,7 +203,6 @@ void Server::processLine(Client &client, const std::string &line)
     const std::string &name = msg.getCommand();
     std::map<std::string, Command>::iterator it = _commands.find(name);
 
-    // nothing but PASS is accepted before the password
     if (!client.isAuthenticated() && name != "PASS" && name != "CAP")
         reject(client, "451", ":You have not registered", "password required");
     else if (it == _commands.end() && client.isRegistered())
@@ -241,12 +227,9 @@ void Server::removeClient(int fd)
     _clients.erase(fd);
     _pendingClose.erase(fd);
     if (_acceptPaused)
-        resumeAccept();     // an fd is free again
+        resumeAccept();
 }
 
-// A normal close() leaves netcat waiting for one more line of input before
-// it notices the connection is gone. SO_LINGER 0 resets the connection,
-// so nc exits right after printing ERROR.
 void Server::resetClosed(int fd)
 {
     struct linger lin;
@@ -256,8 +239,6 @@ void Server::resetClosed(int fd)
     removeClient(fd);
 }
 
-// Closing clients are reset after a quiet CLOSE_DELAY_MS, or after enough
-// loop turns when the server is busy, so they never stay open forever.
 void Server::closeExpired(bool timedOut)
 {
     std::map<int, unsigned long>::iterator it = _pendingClose.begin();
@@ -270,8 +251,6 @@ void Server::closeExpired(bool timedOut)
             resetClosed(fd);
     }
 }
-
-// ---------------------------------------------------------------- lookups
 
 Client *Server::findClient(int fd)
 {
@@ -294,9 +273,6 @@ Channel *Server::findChannel(const std::string &name)
     return it == _channels.end() ? NULL : &it->second;
 }
 
-// ---------------------------------------------------------------- channel membership
-
-// Removes fd from the channel and deletes the channel when it becomes empty.
 void Server::leaveChannel(Channel &channel, int fd)
 {
     channel.removeMember(fd);
@@ -304,7 +280,6 @@ void Server::leaveChannel(Channel &channel, int fd)
         _channels.erase(ircLower(channel.getName()));
 }
 
-// Used by QUIT and by lost connections: everyone sharing a channel sees QUIT.
 void Server::leaveAllChannels(Client &client, const std::string &quitMessage)
 {
     if (client.isRegistered())
@@ -315,22 +290,15 @@ void Server::leaveAllChannels(Client &client, const std::string &quitMessage)
     while (it != _channels.end())
     {
         Channel &channel = it->second;
-        ++it;   // leaveChannel may erase the current channel
+        ++it;
         leaveChannel(channel, fd);
     }
 }
 
-// ---------------------------------------------------------------- sending
-
-// Messages are only queued here; they are written when epoll
-// reports the socket as writable.
 void Server::sendMessage(Client &client, const std::string &message)
 {
     if (client.isClosing())
-        return;     // ERROR was the last message
-    // a client that stops reading must not fill the server's memory: it is
-    // dropped like "SendQ exceeded" on real servers. It is closed later in
-    // closeExpired(), never here, because callers may be looping over members.
+        return;
     if (client.pendingOutputSize() + message.size() + 2 > MAX_SENDQ)
     {
         log(client, "send queue exceeded");
@@ -364,7 +332,6 @@ void Server::broadcast(const Channel &channel, const std::string &message, int e
     }
 }
 
-// Sends once to the client and to everyone sharing a channel with it (NICK, QUIT).
 void Server::sendToNeighbors(Client &client, const std::string &message)
 {
     std::set<int> targets;
@@ -378,8 +345,6 @@ void Server::sendToNeighbors(Client &client, const std::string &message)
             sendMessage(*findClient(*it), message);
 }
 
-// Sends ERROR; the connection is closed CLOSE_DELAY_MS after it has been
-// written (onWritable restarts the delay), or anyway if it never gets written.
 void Server::closeLink(Client &client, const std::string &reason)
 {
     sendMessage(client, "ERROR :Closing link: " + reason);
@@ -387,7 +352,6 @@ void Server::closeLink(Client &client, const std::string &reason)
     _pendingClose[client.getFd()] = _loopTurn;
 }
 
-// Sends the error numeric and ERROR, then closes the connection.
 void Server::reject(Client &client, const std::string &code,
     const std::string &text, const std::string &reason)
 {

@@ -1,8 +1,6 @@
 #include "Server.hpp"
 #include "Utils.hpp"
 
-// RFC 1459, 1.3: starts with '#' or '&', at most 200 chars,
-// no space, comma or control G
 static bool isValidChannelName(const std::string &name)
 {
     return name.size() >= 2 && name.size() <= 200
@@ -10,7 +8,6 @@ static bool isValidChannelName(const std::string &name)
         && name.find_first_of(" ,\a") == std::string::npos;
 }
 
-// Shared checks of PART, TOPIC and KICK: the channel exists and the client is in it.
 Channel *Server::findMemberChannel(Client &client, const std::string &name)
 {
     Channel *channel = findChannel(name);
@@ -24,7 +21,6 @@ Channel *Server::findMemberChannel(Client &client, const std::string &name)
     return channel;
 }
 
-// JOIN <channel>{,<channel>} [<key>{,<key>}]  (4.2.1)
 void Server::cmdJoin(Client &client, const Message &msg)
 {
     const std::vector<std::string> &params = msg.getParams();
@@ -54,7 +50,6 @@ void Server::joinChannel(Client &client, const std::string &name, const std::str
 
     if (!channel)
     {
-        // the creator of a channel is its first operator
         channel = &_channels.insert(std::make_pair(ircLower(name), Channel(name))).first->second;
         channel->setOperator(fd, true);
     }
@@ -81,7 +76,6 @@ size_t Server::countChannels(int fd) const
     return count;
 }
 
-// 353 uses the RFC 2812 form "= #channel" which current clients expect
 void Server::sendNames(Client &client, const Channel &channel)
 {
     std::string names;
@@ -99,26 +93,6 @@ void Server::sendNames(Client &client, const Channel &channel)
     reply(client, "366", channel.getName() + " :End of /NAMES list");
 }
 
-// PART <channel>{,<channel>} [<reason>]  (4.2.2)
-void Server::cmdPart(Client &client, const Message &msg)
-{
-    const std::vector<std::string> &params = msg.getParams();
-    if (params.empty())
-        return reply(client, "461", "PART :Not enough parameters");
-
-    std::string reason = params.size() > 1 ? " :" + params[1] : "";
-    std::vector<std::string> names = splitList(params[0], ',');
-    for (size_t i = 0; i < names.size(); ++i)
-    {
-        Channel *channel = findMemberChannel(client, names[i]);
-        if (!channel)
-            continue;
-        broadcast(*channel, ":" + client.getPrefix() + " PART " + channel->getName() + reason, -1);
-        leaveChannel(*channel, client.getFd());
-    }
-}
-
-// TOPIC <channel> [<topic>]  (4.2.4)
 void Server::cmdTopic(Client &client, const Message &msg)
 {
     const std::vector<std::string> &params = msg.getParams();
@@ -144,7 +118,6 @@ void Server::cmdTopic(Client &client, const Message &msg)
         + " :" + params[1], -1);
 }
 
-// KICK <channel> <user> [<comment>]  (4.2.8)
 void Server::cmdKick(Client &client, const Message &msg)
 {
     const std::vector<std::string> &params = msg.getParams();
@@ -167,7 +140,6 @@ void Server::cmdKick(Client &client, const Message &msg)
     leaveChannel(*channel, target->getFd());
 }
 
-// INVITE <nickname> <channel>  (4.2.7)
 void Server::cmdInvite(Client &client, const Message &msg)
 {
     const std::vector<std::string> &params = msg.getParams();
@@ -178,7 +150,6 @@ void Server::cmdInvite(Client &client, const Message &msg)
     if (!target || !target->isRegistered())
         return reply(client, "401", params[0] + " :No such nick/channel");
 
-    // RFC 1459: the channel does not have to exist
     Channel *channel = findChannel(params[1]);
     if (channel)
     {
@@ -191,46 +162,7 @@ void Server::cmdInvite(Client &client, const Message &msg)
                 + " :is already on channel");
         channel->invite(target->getFd());
     }
-    // 341 in the RFC 2812 order "<nick> <channel>", which irssi expects
     reply(client, "341", target->getNick() + " " + params[1]);
     sendMessage(*target, ":" + client.getPrefix() + " INVITE " + target->getNick()
         + " :" + params[1]);
-}
-
-// NAMES [<channel>{,<channel>}]  (4.2.5)
-void Server::cmdNames(Client &client, const Message &msg)
-{
-    if (msg.getParams().empty())
-        return reply(client, "366", "* :End of /NAMES list");
-
-    std::vector<std::string> names = splitList(msg.getParams()[0], ',');
-    for (size_t i = 0; i < names.size(); ++i)
-    {
-        Channel *channel = findChannel(names[i]);
-        if (channel)
-            sendNames(client, *channel);
-        else
-            reply(client, "366", names[i] + " :End of /NAMES list");
-    }
-}
-
-// WHO <channel>  (4.5.1); irssi sends it after every JOIN
-void Server::cmdWho(Client &client, const Message &msg)
-{
-    std::string mask = msg.getParams().empty() ? "*" : msg.getParams()[0];
-    Channel *channel = findChannel(mask);
-    if (channel)
-    {
-        const std::set<int> &members = channel->getMembers();
-        for (std::set<int>::const_iterator it = members.begin(); it != members.end(); ++it)
-        {
-            Client *member = findClient(*it);
-            if (!member)
-                continue;
-            reply(client, "352", channel->getName() + " " + member->getUsername() + " "
-                + member->getHostname() + " " SERVER_NAME " " + member->getNick()
-                + (channel->isOperator(*it) ? " H@" : " H") + " :0 " + member->getRealname());
-        }
-    }
-    reply(client, "315", mask + " :End of /WHO list");
 }
