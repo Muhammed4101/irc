@@ -1,14 +1,13 @@
 #include "Channel.hpp"
 #include "Utils.hpp"
 
-// New channels start with +t, like most IRC servers
 Channel::Channel(const std::string &name)
     : _name(name), _limit(0), _inviteOnly(false), _topicRestricted(true) {}
 
 const std::string &Channel::getName() const { return _name; }
 const std::set<int> &Channel::getMembers() const { return _members; }
 
-// e.g. "+itkl secret 10"; the key is hidden from non-members
+
 std::string Channel::getModes(bool showKey) const
 {
     std::string modes = "+";
@@ -44,7 +43,7 @@ void Channel::setTopicRestricted(bool value) { _topicRestricted = value; }
 void Channel::addMember(int fd)
 {
     _members.insert(fd);
-    _invited.erase(fd);     // an invitation is used once
+    _invited.erase(fd);
 }
 
 void Channel::removeMember(int fd)

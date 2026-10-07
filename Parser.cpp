@@ -32,7 +32,6 @@ bool Message::parse(const std::string &line)
     skipSpaces(line, pos);
     while (pos < line.size())
     {
-        // after 14 middle params the rest is the trailing, with or without ':'
         if (line[pos] == ':' || _params.size() == MAX_PARAMS - 1)
         {
             if (line[pos] == ':')

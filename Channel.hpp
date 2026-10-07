@@ -4,7 +4,6 @@
 #include <set>
 #include <string>
 
-// Members are stored by fd; the Server owns the Client objects.
 class Channel
 {
 public:
@@ -19,7 +18,7 @@ public:
     const std::string   &getKey() const;
     void                setKey(const std::string &key);
     size_t              getLimit() const;
-    void                setLimit(size_t limit);     // 0: no limit
+    void                setLimit(size_t limit);
     bool                isInviteOnly() const;
     void                setInviteOnly(bool value);
     bool                isTopicRestricted() const;

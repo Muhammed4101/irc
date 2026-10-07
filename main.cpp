@@ -20,9 +20,7 @@ int main(int argc, char **argv)
         std::cerr << "Usage: ./ircserv <port> <password>" << std::endl;
         return 1;
     }
-    // a client closing its socket while we send must not kill the server
     signal(SIGPIPE, SIG_IGN);
-    // Ctrl+C and Ctrl+\ stop the server cleanly instead of killing it
     signal(SIGINT, Server::requestStop);
     signal(SIGQUIT, Server::requestStop);
     try

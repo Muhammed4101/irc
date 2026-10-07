@@ -19,7 +19,6 @@ std::string ircLower(const std::string &str)
     return out;
 }
 
-// "#a,#b,,#c" -> ["#a", "#b", "#c"]
 std::vector<std::string> splitList(const std::string &str, char delimiter)
 {
     std::vector<std::string> items;

@@ -28,9 +28,6 @@ bool Client::receive()
     return true;
 }
 
-// Takes one line out of the input buffer. Accepts "\r\n" and "\n".
-// RFC 1459 limits a message to 512 bytes with CR-LF: longer lines are cut
-// to 510 bytes and the rest of the line is dropped, so _input stays small.
 bool Client::nextLine(std::string &line)
 {
     const size_t maxLine = MAX_MSG_LEN - 2;
@@ -50,7 +47,7 @@ bool Client::nextLine(std::string &line)
     if (nl == _input.end())
     {
         if (_input.size() < MAX_MSG_LEN)
-            return false;   // wait for the rest of the line
+            return false;
         line.assign(_input.begin(), _input.begin() + maxLine);
         _input.clear();
         _skipLine = true;
@@ -65,8 +62,6 @@ bool Client::nextLine(std::string &line)
         line.erase(line.size() - 1);
     if (line.size() > maxLine)
         line.erase(maxLine);
-    // CR and NUL are not allowed inside a message (RFC 1459, 2.3.1);
-    // forwarding them would let a client forge lines for other clients
     for (size_t i = 0; i < line.size(); ++i)
         if (line[i] == '\r' || line[i] == '\0')
             line[i] = ' ';
@@ -83,7 +78,7 @@ void Client::queue(const std::string &data)
     _output.insert(_output.end(), data.begin(), data.end());
 }
 
-// Sends as much as the socket accepts and keeps the rest for later.
+
 bool Client::flush()
 {
     if (_output.empty())
@@ -93,7 +88,7 @@ bool Client::flush()
         return false;
     _output.erase(_output.begin(), _output.begin() + n);
     if (_output.empty())
-        std::vector<char>().swap(_output);  // give back memory of a big backlog
+        std::vector<char>().swap(_output);
     return true;
 }
 
