@@ -139,6 +139,8 @@ bool Server::applyMode(Client &client, Channel &channel, bool adding, char mode,
                     + " :They aren't on that channel");
                 return false;
             }
+            if (channel.isOperator(target->getFd()) == adding)
+                return false;
             channel.setOperator(target->getFd(), adding);
             appliedParam = target->getNick();
             return true;
